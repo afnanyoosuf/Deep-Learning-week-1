@@ -14,3 +14,5 @@ with mlflow.start_run(run_name="tensorflow-baseline"):
         epochs=10,
         validation_data=(X_val, y_val)
     )
+
+
