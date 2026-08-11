@@ -1,64 +1,47 @@
-from pathlib import Path
 import json
 import random
+from pathlib import Path
 
+import mlflow
 import numpy as np
 import torch
 import torch.nn as nn
 import yaml
-import mlflow
 
-from src.data.dataset import get_mnist_dataloaders
+from torch.utils.data import DataLoader, random_split
+from torchvision import datasets, transforms
+
 from src.models.pytorch_model import MNISTANN
 
 
-# ============================================================
-# Project paths
-# ============================================================
+# =========================================================
+# 1. LOAD PARAMETERS
+# =========================================================
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-PARAMS_PATH = PROJECT_ROOT / "params.yaml"
-
-MODEL_DIR = PROJECT_ROOT / "models" / "pytorch"
-METRICS_DIR = PROJECT_ROOT / "metrics"
-
-MODEL_DIR.mkdir(parents=True, exist_ok=True)
-METRICS_DIR.mkdir(parents=True, exist_ok=True)
-
-MODEL_PATH = MODEL_DIR / "mnist_ann.pth"
-METRICS_PATH = METRICS_DIR / "train_metrics.json"
-
-
-# ============================================================
-# Load parameters
-# ============================================================
-
-with open(PARAMS_PATH, "r") as file:
+with open("params.yaml", "r") as file:
     params = yaml.safe_load(file)
 
 
-data_params = params["data"]
-train_params = params["train"]
-model_params = params["model"]
+train_size = params["data"]["train_size"]
+val_size = params["data"]["val_size"]
+num_classes = params["data"]["num_classes"]
+
+SEED = params["train"]["seed"]
+batch_size = params["train"]["batch_size"]
+epochs = params["train"]["epochs"]
+learning_rate = params["train"]["learning_rate"]
+optimizer_name = params["train"]["optimizer"]
+
+input_size = params["model"]["input_size"]
+hidden_size = params["model"]["hidden_size"]
+dropout = params["model"]["dropout"]
+batch_norm = params["model"]["batch_norm"]
+output_size = params["model"]["output_size"]
 
 
-SEED = train_params["seed"]
-BATCH_SIZE = train_params["batch_size"]
-EPOCHS = train_params["epochs"]
-LEARNING_RATE = train_params["learning_rate"]
-OPTIMIZER_NAME = train_params["optimizer"]
-
-INPUT_SIZE = model_params["input_size"]
-HIDDEN_SIZE = model_params["hidden_size"]
-OUTPUT_SIZE = model_params["output_size"]
-DROPOUT = model_params["dropout"]
-BATCH_NORM = model_params["batch_norm"]
-
-
-# ============================================================
-# Reproducibility
-# ============================================================
+# =========================================================
+# 2. REPRODUCIBILITY
+# =========================================================
 
 random.seed(SEED)
 np.random.seed(SEED)
@@ -68,9 +51,9 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
 
-# ============================================================
-# Device
-# ============================================================
+# =========================================================
+# 3. DEVICE
+# =========================================================
 
 device = torch.device(
     "cuda" if torch.cuda.is_available() else "cpu"
@@ -79,125 +62,201 @@ device = torch.device(
 print("Device:", device)
 
 
-# ============================================================
-# Data
-# ============================================================
+# =========================================================
+# 4. DIRECTORIES
+# =========================================================
 
-train_loader, val_loader, test_loader = (
-    get_mnist_dataloaders(
-        data_dir=PROJECT_ROOT / "data" / "raw",
-        batch_size=BATCH_SIZE,
-        train_size=data_params["train_size"],
-        val_size=data_params["val_size"],
-        seed=SEED
-    )
+model_dir = Path("models/pytorch")
+checkpoint_dir = model_dir / "checkpoints"
+metrics_dir = Path("metrics")
+
+model_dir.mkdir(parents=True, exist_ok=True)
+checkpoint_dir.mkdir(parents=True, exist_ok=True)
+metrics_dir.mkdir(parents=True, exist_ok=True)
+
+
+# =========================================================
+# 5. LOAD MNIST
+# =========================================================
+
+transform = transforms.ToTensor()
+
+full_dataset = datasets.MNIST(
+    root="data/raw",
+    train=True,
+    download=True,
+    transform=transform
+)
+
+test_dataset = datasets.MNIST(
+    root="data/raw",
+    train=False,
+    download=True,
+    transform=transform
 )
 
 
-# ============================================================
-# Model
-# ============================================================
+# =========================================================
+# 6. TRAIN / VALIDATION SPLIT
+# =========================================================
+
+train_dataset, val_dataset = random_split(
+    full_dataset,
+    [train_size, val_size],
+    generator=torch.Generator().manual_seed(SEED)
+)
+
+
+# =========================================================
+# 7. DATALOADERS
+# =========================================================
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=batch_size,
+    shuffle=True
+)
+
+val_loader = DataLoader(
+    val_dataset,
+    batch_size=batch_size,
+    shuffle=False
+)
+
+
+# =========================================================
+# 8. MODEL
+# =========================================================
 
 model = MNISTANN(
-    input_size=INPUT_SIZE,
-    hidden_size=HIDDEN_SIZE,
-    output_size=OUTPUT_SIZE,
-    dropout=DROPOUT,
-    batch_norm=BATCH_NORM
+    hidden_size=hidden_size,
+    dropout=dropout,
+    batch_norm=batch_norm
 ).to(device)
 
+print("\nModel:")
 print(model)
 
 
-# ============================================================
-# Loss
-# ============================================================
+# =========================================================
+# 9. LOSS
+# =========================================================
 
 criterion = nn.CrossEntropyLoss()
 
 
-# ============================================================
-# Optimizer
-# ============================================================
+# =========================================================
+# 10. OPTIMIZER
+# =========================================================
 
-if OPTIMIZER_NAME.lower() == "adam":
+if optimizer_name.lower() == "adam":
 
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=LEARNING_RATE
+        lr=learning_rate
     )
 
-elif OPTIMIZER_NAME.lower() == "sgd":
+elif optimizer_name.lower() == "sgd":
 
     optimizer = torch.optim.SGD(
         model.parameters(),
-        lr=LEARNING_RATE
+        lr=learning_rate
     )
 
-elif OPTIMIZER_NAME.lower() == "rmsprop":
+elif optimizer_name.lower() == "rmsprop":
 
     optimizer = torch.optim.RMSprop(
         model.parameters(),
-        lr=LEARNING_RATE
+        lr=learning_rate
     )
 
 else:
 
     raise ValueError(
-        f"Unsupported optimizer: {OPTIMIZER_NAME}"
+        f"Unknown optimizer: {optimizer_name}"
     )
 
 
-# ============================================================
-# MLflow
-# ============================================================
+# =========================================================
+# 11. HISTORY
+# =========================================================
+
+history = {
+    "train_loss": [],
+    "val_loss": [],
+    "train_accuracy": [],
+    "val_accuracy": []
+}
+
+
+# =========================================================
+# 12. CHECKPOINT SETTINGS
+# =========================================================
+
+best_val_accuracy = 0.0
+
+best_checkpoint_path = (
+    model_dir / "best_checkpoint.pth"
+)
+
+
+# =========================================================
+# 13. MLFLOW CONFIGURATION
+# =========================================================
 
 mlflow.set_tracking_uri(
     "http://localhost:5000"
 )
 
 mlflow.set_experiment(
-    "MNIST ANN DVC Experiments"
+    "Deep Learning Experiments"
 )
 
 
-# ============================================================
-# Training
-# ============================================================
+# =========================================================
+# 14. START MLFLOW RUN
+# =========================================================
 
-best_val_accuracy = 0.0
+with mlflow.start_run(
+    run_name="pytorch-mnist-ann"
+):
 
-history = {
-    "train_loss": [],
-    "train_accuracy": [],
-    "val_loss": [],
-    "val_accuracy": []
-}
-
-
-with mlflow.start_run():
-
-    # Log parameters
     mlflow.log_params({
+
         "seed": SEED,
-        "batch_size": BATCH_SIZE,
-        "epochs": EPOCHS,
-        "learning_rate": LEARNING_RATE,
-        "optimizer": OPTIMIZER_NAME,
-        "hidden_size": HIDDEN_SIZE,
-        "dropout": DROPOUT,
-        "batch_norm": BATCH_NORM
+        "train_size": train_size,
+        "val_size": val_size,
+        "num_classes": num_classes,
+
+        "batch_size": batch_size,
+        "epochs": epochs,
+        "learning_rate": learning_rate,
+        "optimizer": optimizer_name,
+
+        "input_size": input_size,
+        "hidden_size": hidden_size,
+        "output_size": output_size,
+        "dropout": dropout,
+        "batch_norm": batch_norm,
+
+        "device": str(device)
     })
 
-    for epoch in range(EPOCHS):
+    print("\nStarting training...")
 
-        # ====================================================
-        # Training
-        # ====================================================
+    # =====================================================
+    # 15. TRAINING LOOP
+    # =====================================================
+
+    for epoch in range(epochs):
+
+        # -------------------------------------------------
+        # TRAINING
+        # -------------------------------------------------
 
         model.train()
 
-        train_loss = 0.0
+        running_train_loss = 0.0
         train_correct = 0
         train_total = 0
 
@@ -219,7 +278,7 @@ with mlflow.start_run():
 
             optimizer.step()
 
-            train_loss += loss.item()
+            running_train_loss += loss.item()
 
             predictions = torch.argmax(
                 outputs,
@@ -232,20 +291,13 @@ with mlflow.start_run():
 
             train_total += labels.size(0)
 
-        train_loss /= len(train_loader)
-
-        train_accuracy = (
-            train_correct / train_total
-        )
-
-
-        # ====================================================
-        # Validation
-        # ====================================================
+        # -------------------------------------------------
+        # VALIDATION
+        # -------------------------------------------------
 
         model.eval()
 
-        val_loss = 0.0
+        running_val_loss = 0.0
         val_correct = 0
         val_total = 0
 
@@ -263,7 +315,7 @@ with mlflow.start_run():
                     labels
                 )
 
-                val_loss += loss.item()
+                running_val_loss += loss.item()
 
                 predictions = torch.argmax(
                     outputs,
@@ -276,93 +328,281 @@ with mlflow.start_run():
 
                 val_total += labels.size(0)
 
-        val_loss /= len(val_loader)
+        # -------------------------------------------------
+        # METRICS
+        # -------------------------------------------------
+
+        train_loss = (
+            running_train_loss /
+            len(train_loader)
+        )
+
+        val_loss = (
+            running_val_loss /
+            len(val_loader)
+        )
+
+        train_accuracy = (
+            train_correct /
+            train_total
+        )
 
         val_accuracy = (
-            val_correct / val_total
+            val_correct /
+            val_total
         )
 
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        history["train_accuracy"].append(train_accuracy)
+        history["val_accuracy"].append(val_accuracy)
 
-        # ====================================================
-        # Save history
-        # ====================================================
-
-        history["train_loss"].append(
-            train_loss
-        )
-
-        history["train_accuracy"].append(
-            train_accuracy
-        )
-
-        history["val_loss"].append(
-            val_loss
-        )
-
-        history["val_accuracy"].append(
-            val_accuracy
-        )
-
-
-        # ====================================================
-        # MLflow metrics
-        # ====================================================
-
-        mlflow.log_metrics({
-            "train_loss": train_loss,
-            "train_accuracy": train_accuracy,
-            "val_loss": val_loss,
-            "val_accuracy": val_accuracy
-        }, step=epoch)
-
+        # -------------------------------------------------
+        # PRINT
+        # -------------------------------------------------
 
         print(
-            f"Epoch [{epoch + 1}/{EPOCHS}] "
-            f"Train Loss: {train_loss:.4f} | "
-            f"Train Acc: {train_accuracy:.4f} | "
-            f"Val Loss: {val_loss:.4f} | "
-            f"Val Acc: {val_accuracy:.4f}"
+            f"\nEpoch [{epoch + 1}/{epochs}]"
         )
 
+        print(
+            f"Train Loss: {train_loss:.4f}"
+        )
 
-        # ====================================================
-        # Save best model
-        # ====================================================
+        print(
+            f"Val Loss: {val_loss:.4f}"
+        )
+
+        print(
+            f"Train Accuracy: {train_accuracy:.4f}"
+        )
+
+        print(
+            f"Val Accuracy: {val_accuracy:.4f}"
+        )
+
+        # -------------------------------------------------
+        # MLFLOW EPOCH METRICS
+        # -------------------------------------------------
+
+        mlflow.log_metrics({
+
+            "train_loss": train_loss,
+            "val_loss": val_loss,
+            "train_accuracy": train_accuracy,
+            "val_accuracy": val_accuracy
+
+        }, step=epoch + 1)
+
+        # -------------------------------------------------
+        # CHECKPOINT
+        # -------------------------------------------------
+
+        checkpoint = {
+
+            "epoch": epoch + 1,
+
+            "model_state_dict":
+                model.state_dict(),
+
+            "optimizer_state_dict":
+                optimizer.state_dict(),
+
+            "train_loss":
+                train_loss,
+
+            "val_loss":
+                val_loss,
+
+            "train_accuracy":
+                train_accuracy,
+
+            "val_accuracy":
+                val_accuracy,
+
+            "seed":
+                SEED,
+
+            "hidden_size":
+                hidden_size,
+
+            "dropout":
+                dropout,
+
+            "batch_norm":
+                batch_norm,
+
+            "optimizer":
+                optimizer_name,
+
+            "learning_rate":
+                learning_rate,
+
+            "batch_size":
+                batch_size
+        }
+
+        epoch_checkpoint_path = (
+            checkpoint_dir /
+            f"checkpoint_epoch_{epoch + 1}.pth"
+        )
+
+        torch.save(
+            checkpoint,
+            epoch_checkpoint_path
+        )
+
+        print(
+            f"Checkpoint saved: "
+            f"{epoch_checkpoint_path}"
+        )
+
+        # -------------------------------------------------
+        # BEST CHECKPOINT
+        # -------------------------------------------------
 
         if val_accuracy > best_val_accuracy:
 
             best_val_accuracy = val_accuracy
 
             torch.save(
-                model.state_dict(),
-                MODEL_PATH
+                checkpoint,
+                best_checkpoint_path
             )
 
+            print(
+                f"Best checkpoint saved "
+                f"at epoch {epoch + 1}"
+            )
 
-    # ========================================================
-    # Save final metrics
-    # ========================================================
+    # =====================================================
+    # 16. FINAL MODEL
+    # =====================================================
 
-    metrics = {
-        "best_val_accuracy": best_val_accuracy,
-        "final_train_loss": history["train_loss"][-1],
-        "final_train_accuracy": history["train_accuracy"][-1],
-        "final_val_loss": history["val_loss"][-1],
-        "final_val_accuracy": history["val_accuracy"][-1]
+    final_model_path = (
+        model_dir /
+        "mnist_ann_bn_dropout.pth"
+    )
+
+    torch.save(
+        model.state_dict(),
+        final_model_path
+    )
+
+    # =====================================================
+    # 17. TRAIN METRICS
+    # =====================================================
+
+    train_metrics = {
+
+        "best_val_accuracy":
+            best_val_accuracy,
+
+        "final_train_loss":
+            history["train_loss"][-1],
+
+        "final_val_loss":
+            history["val_loss"][-1],
+
+        "final_train_accuracy":
+            history["train_accuracy"][-1],
+
+        "final_val_accuracy":
+            history["val_accuracy"][-1],
+
+        "epochs":
+            epochs,
+
+        "optimizer":
+            optimizer_name,
+
+        "learning_rate":
+            learning_rate,
+
+        "batch_size":
+            batch_size,
+
+        "hidden_size":
+            hidden_size,
+
+        "dropout":
+            dropout,
+
+        "batch_norm":
+            batch_norm
     }
 
-    with open(METRICS_PATH, "w") as file:
+    train_metrics_path = (
+        metrics_dir / "train_metrics.json"
+    )
+
+    with open(
+        train_metrics_path,
+        "w"
+    ) as file:
 
         json.dump(
-            metrics,
+            train_metrics,
             file,
             indent=4
         )
 
-    mlflow.log_metrics(metrics)
+    # =====================================================
+    # 18. FINAL MLFLOW METRIC
+    # =====================================================
 
+    mlflow.log_metric(
+        "best_val_accuracy",
+        best_val_accuracy
+    )
 
-print()
-print("Training completed.")
-print("Model saved to:", MODEL_PATH)
-print("Metrics saved to:", METRICS_PATH)
+    # =====================================================
+    # 19. MLFLOW ARTIFACTS
+    # =====================================================
+
+    mlflow.log_artifact(
+        str(best_checkpoint_path),
+        artifact_path="checkpoints"
+    )
+
+    mlflow.log_artifact(
+        str(final_model_path),
+        artifact_path="models"
+    )
+
+    mlflow.log_artifact(
+        str(train_metrics_path),
+        artifact_path="metrics"
+    )
+
+    # =====================================================
+    # 20. COMPLETE
+    # =====================================================
+
+    print("\n========================================")
+    print("Training completed successfully!")
+    print("========================================")
+
+    print(
+        f"Best validation accuracy: "
+        f"{best_val_accuracy:.4f}"
+    )
+
+    print(
+        f"Best checkpoint: "
+        f"{best_checkpoint_path}"
+    )
+
+    print(
+        f"Final model: "
+        f"{final_model_path}"
+    )
+
+    print(
+        f"Checkpoint directory: "
+        f"{checkpoint_dir}"
+    )
+
+    print(
+        "\nMLflow run completed successfully!"
+    )

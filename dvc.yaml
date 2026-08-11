@@ -4,7 +4,6 @@ stages:
     cmd: python -m src.training.train_pytorch
 
     deps:
-      - src/data/dataset.py
       - src/models/pytorch_model.py
       - src/training/train_pytorch.py
       - data/raw
@@ -12,6 +11,7 @@ stages:
     params:
       - data.train_size
       - data.val_size
+      - data.num_classes
       - train.seed
       - train.batch_size
       - train.epochs
@@ -24,11 +24,11 @@ stages:
       - model.batch_norm
 
     outs:
-      - models/pytorch/mnist_ann.pth
+      - models/pytorch/best_checkpoint.pth
+      - models/pytorch/mnist_ann_bn_dropout.pth
 
     metrics:
       - metrics/train_metrics.json
-
 
   evaluate_pytorch:
     cmd: python -m src.evaluation.evaluate
@@ -36,7 +36,7 @@ stages:
     deps:
       - src/models/pytorch_model.py
       - src/evaluation/evaluate.py
-      - models/pytorch/mnist_ann.pth
+      - models/pytorch/best_checkpoint.pth
       - data/raw
 
     params:

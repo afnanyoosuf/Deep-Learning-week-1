@@ -5,9 +5,7 @@ class MNISTANN(nn.Module):
 
     def __init__(
         self,
-        input_size=784,
         hidden_size=128,
-        output_size=10,
         dropout=0.3,
         batch_norm=True
     ):
@@ -15,7 +13,7 @@ class MNISTANN(nn.Module):
 
         layers = [
             nn.Flatten(),
-            nn.Linear(input_size, hidden_size)
+            nn.Linear(784, hidden_size)
         ]
 
         if batch_norm:
@@ -31,7 +29,7 @@ class MNISTANN(nn.Module):
             )
 
         layers.append(
-            nn.Linear(hidden_size, output_size)
+            nn.Linear(hidden_size, 10)
         )
 
         self.network = nn.Sequential(*layers)

@@ -8,20 +8,17 @@ stages:
       md5: ab3353d41bd7a24a20a31f29b64e3b3c.dir
       size: 66544770
       nfiles: 8
-    - path: src/data/dataset.py
-      hash: md5
-      md5: ee96d59d27914cf135cca7d4d7817b33
-      size: 1444
     - path: src/models/pytorch_model.py
       hash: md5
-      md5: e392042d0473d41706252293392bb7aa
-      size: 811
+      md5: 7be3fe6b904e5563d97f4ee6890842ee
+      size: 745
     - path: src/training/train_pytorch.py
       hash: md5
-      md5: 6824054cca1430e4dda7901ea6fa3f37
-      size: 8851
+      md5: 24d72ec8a50ddfbcba67bb75113a9fcf
+      size: 14109
     params:
       params.yaml:
+        data.num_classes: 10
         data.train_size: 50000
         data.val_size: 10000
         model.batch_norm: true
@@ -37,12 +34,16 @@ stages:
     outs:
     - path: metrics/train_metrics.json
       hash: md5
-      md5: 992e1eb2c3960558cc1518faae31e7ee
-      size: 200
-    - path: models/pytorch/mnist_ann.pth
+      md5: ea56e411d49216b6b4439797f57e832b
+      size: 368
+    - path: models/pytorch/best_checkpoint.pth
       hash: md5
-      md5: f83a4d4bb85a3a82d03946eed70e55b8
-      size: 413095
+      md5: 9c3107d6fd93a52027be2efaa9913c0c
+      size: 1234458
+    - path: models/pytorch/mnist_ann_bn_dropout.pth
+      hash: md5
+      md5: 6011ae24e6a1897ff91c3ed7c7d568eb
+      size: 413260
   evaluate_pytorch:
     cmd: python -m src.evaluation.evaluate
     deps:
@@ -51,18 +52,18 @@ stages:
       md5: ab3353d41bd7a24a20a31f29b64e3b3c.dir
       size: 66544770
       nfiles: 8
-    - path: models/pytorch/mnist_ann.pth
+    - path: models/pytorch/best_checkpoint.pth
       hash: md5
-      md5: f83a4d4bb85a3a82d03946eed70e55b8
-      size: 413095
+      md5: 9c3107d6fd93a52027be2efaa9913c0c
+      size: 1234458
     - path: src/evaluation/evaluate.py
       hash: md5
-      md5: 3c9573f8b31ffe1030fcb1305a91fe73
-      size: 4567
+      md5: ee72294738802aee7fd30c5569233c5b
+      size: 5636
     - path: src/models/pytorch_model.py
       hash: md5
-      md5: e392042d0473d41706252293392bb7aa
-      size: 811
+      md5: 7be3fe6b904e5563d97f4ee6890842ee
+      size: 745
     params:
       params.yaml:
         model.batch_norm: true
@@ -74,5 +75,5 @@ stages:
     outs:
     - path: metrics/test_metrics.json
       hash: md5
-      md5: c66e6178a31b1f130abc5389c7e76ca8
-      size: 72
+      md5: 5ddee989ac12f1915636f19d3b728a6a
+      size: 319
