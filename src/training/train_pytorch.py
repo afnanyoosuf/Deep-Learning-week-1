@@ -1,4 +1,5 @@
 import json
+import os
 import random
 from pathlib import Path
 
@@ -204,12 +205,37 @@ best_checkpoint_path = (
 # 13. MLFLOW CONFIGURATION
 # =========================================================
 
-mlflow.set_tracking_uri(
+# Docker:
+#   MLFLOW_TRACKING_URI=http://host.docker.internal:5000
+#
+# Local Windows:
+#   Defaults to http://localhost:5000
+
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI",
     "http://localhost:5000"
 )
 
-mlflow.set_experiment(
+MLFLOW_EXPERIMENT_NAME = (
     "Deep Learning Experiments"
+)
+
+mlflow.set_tracking_uri(
+    MLFLOW_TRACKING_URI
+)
+
+mlflow.set_experiment(
+    MLFLOW_EXPERIMENT_NAME
+)
+
+print(
+    "MLflow Tracking URI:",
+    mlflow.get_tracking_uri()
+)
+
+print(
+    "MLflow Experiment:",
+    MLFLOW_EXPERIMENT_NAME
 )
 
 
@@ -220,6 +246,10 @@ mlflow.set_experiment(
 with mlflow.start_run(
     run_name="pytorch-mnist-ann"
 ):
+
+    # -----------------------------------------------------
+    # MLFLOW PARAMETERS
+    # -----------------------------------------------------
 
     mlflow.log_params({
 
@@ -329,7 +359,7 @@ with mlflow.start_run(
                 val_total += labels.size(0)
 
         # -------------------------------------------------
-        # METRICS
+        # CALCULATE METRICS
         # -------------------------------------------------
 
         train_loss = (
@@ -352,13 +382,24 @@ with mlflow.start_run(
             val_total
         )
 
-        history["train_loss"].append(train_loss)
-        history["val_loss"].append(val_loss)
-        history["train_accuracy"].append(train_accuracy)
-        history["val_accuracy"].append(val_accuracy)
+        history["train_loss"].append(
+            train_loss
+        )
+
+        history["val_loss"].append(
+            val_loss
+        )
+
+        history["train_accuracy"].append(
+            train_accuracy
+        )
+
+        history["val_accuracy"].append(
+            val_accuracy
+        )
 
         # -------------------------------------------------
-        # PRINT
+        # PRINT METRICS
         # -------------------------------------------------
 
         print(
@@ -374,25 +415,30 @@ with mlflow.start_run(
         )
 
         print(
-            f"Train Accuracy: {train_accuracy:.4f}"
+            f"Train Accuracy: "
+            f"{train_accuracy:.4f}"
         )
 
         print(
-            f"Val Accuracy: {val_accuracy:.4f}"
+            f"Val Accuracy: "
+            f"{val_accuracy:.4f}"
         )
 
         # -------------------------------------------------
         # MLFLOW EPOCH METRICS
         # -------------------------------------------------
 
-        mlflow.log_metrics({
+        mlflow.log_metrics(
 
-            "train_loss": train_loss,
-            "val_loss": val_loss,
-            "train_accuracy": train_accuracy,
-            "val_accuracy": val_accuracy
+            {
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "train_accuracy": train_accuracy,
+                "val_accuracy": val_accuracy
+            },
 
-        }, step=epoch + 1)
+            step=epoch + 1
+        )
 
         # -------------------------------------------------
         # CHECKPOINT
@@ -453,8 +499,8 @@ with mlflow.start_run(
         )
 
         print(
-            f"Checkpoint saved: "
-            f"{epoch_checkpoint_path}"
+            "Checkpoint saved:",
+            epoch_checkpoint_path
         )
 
         # -------------------------------------------------
@@ -471,7 +517,7 @@ with mlflow.start_run(
             )
 
             print(
-                f"Best checkpoint saved "
+                "Best checkpoint saved "
                 f"at epoch {epoch + 1}"
             )
 
@@ -533,7 +579,8 @@ with mlflow.start_run(
     }
 
     train_metrics_path = (
-        metrics_dir / "train_metrics.json"
+        metrics_dir /
+        "train_metrics.json"
     )
 
     with open(
@@ -579,9 +626,17 @@ with mlflow.start_run(
     # 20. COMPLETE
     # =====================================================
 
-    print("\n========================================")
-    print("Training completed successfully!")
-    print("========================================")
+    print(
+        "\n========================================"
+    )
+
+    print(
+        "Training completed successfully!"
+    )
+
+    print(
+        "========================================"
+    )
 
     print(
         f"Best validation accuracy: "

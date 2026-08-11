@@ -14,8 +14,8 @@ stages:
       size: 745
     - path: src/training/train_pytorch.py
       hash: md5
-      md5: 24d72ec8a50ddfbcba67bb75113a9fcf
-      size: 14109
+      md5: c917cbfa31faa4f24c6c5e9ae949eafd
+      size: 14959
     params:
       params.yaml:
         data.num_classes: 10
