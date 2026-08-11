@@ -1,0 +1,51 @@
+stages:
+
+  train_pytorch:
+    cmd: python -m src.training.train_pytorch
+
+    deps:
+      - src/data/dataset.py
+      - src/models/pytorch_model.py
+      - src/training/train_pytorch.py
+      - data/raw
+
+    params:
+      - data.train_size
+      - data.val_size
+      - train.seed
+      - train.batch_size
+      - train.epochs
+      - train.learning_rate
+      - train.optimizer
+      - model.input_size
+      - model.hidden_size
+      - model.output_size
+      - model.dropout
+      - model.batch_norm
+
+    outs:
+      - models/pytorch/mnist_ann.pth
+
+    metrics:
+      - metrics/train_metrics.json
+
+
+  evaluate_pytorch:
+    cmd: python -m src.evaluation.evaluate
+
+    deps:
+      - src/models/pytorch_model.py
+      - src/evaluation/evaluate.py
+      - models/pytorch/mnist_ann.pth
+      - data/raw
+
+    params:
+      - train.batch_size
+      - model.input_size
+      - model.hidden_size
+      - model.output_size
+      - model.dropout
+      - model.batch_norm
+
+    metrics:
+      - metrics/test_metrics.json
